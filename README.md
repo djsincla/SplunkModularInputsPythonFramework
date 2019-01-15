@@ -1,5 +1,7 @@
 ## Splunk Python Modular Inputs v1.0
 
+## Forked Code to resolve an issue with Passing Cookies between authentication and data request using python requests
+
 ## Overview
 
 This is a simple template based framework for building <a href="http://docs.splunk.com/Documentation/Splunk/latest/AdvancedDev/ModInputsIntro">Splunk Modular Inputs</a> in Python
