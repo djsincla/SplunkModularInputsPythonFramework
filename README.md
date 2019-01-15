@@ -1,6 +1,6 @@
 ## Splunk Python Modular Inputs v1.0
 
-## Forked Code to resolve an issue with Passing Cookies between authentication and data request using python requests
+Forked Code to resolve an issue with Passing Cookies between authentication and data request using python requests
 
 ## Overview
 
