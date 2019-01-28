@@ -88,6 +88,8 @@
 							<group name="oauth1" />
 							<group name="oauth2" />
 							<group name="custom" />
+							<group name="cookie" />
+
 						</group_set>
 						<key name="none">none</key>
 						<key name="basic">basic</key>
@@ -95,6 +97,8 @@
 						<key name="oauth1">oauth1</key>
 						<key name="oauth2">oauth2</key>
 						<key name="custom">custom</key>
+						<key name="cookie">cookie</key>
+
 					</onChange>
 					<view name="edit" />
 					<view name="create" />
@@ -107,6 +111,8 @@
 						<opt value="oauth1" label="oauth1" />
 						<opt value="oauth2" label="oauth2" />
 						<opt value="custom" label="custom" />
+						<opt value="cookie" label="cookie" />
+
 					</options>
 				</element>
 				<element name="none" type="fieldset" />
@@ -133,7 +139,8 @@
 					</elements>
 				</element>
 				
-				<element name="custom" type="fieldset">
+				<element name="custom" type="fieldset" />
+				<element name="cookie" type="fieldset">
 					
 					<view name="edit" />
 					<view name="create" />
