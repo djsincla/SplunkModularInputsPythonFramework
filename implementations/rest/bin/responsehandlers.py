@@ -2,6 +2,18 @@
 import json
 import datetime
 from datetime import datetime,timedelta
+import logging 
+import collections
+import os
+import sys
+import os.path
+
+
+formatter = logging.Formatter('%(levelname)s %(message)s')
+#with zero args , should go to STD ERR
+handler = logging.StreamHandler()
+handler.setFormatter(formatter)
+logging.root.addHandler(handler)
 
 #the default handler , does nothing , just passes the raw output directly to STDOUT
 class DefaultResponseHandler:
@@ -14,6 +26,75 @@ class DefaultResponseHandler:
         if cookies:
             req_args["cookies"] = cookies        
         print_xml_stream(raw_response_output)
+
+class VeloArrayHandler:
+
+    def __init__(self,**args):
+        pass
+
+    def __call__(self, response_object,raw_response_output,response_type,req_args,endpoint):
+
+        #djs Identify where our app diretory is located so we can write our event id file
+        script_dirpath = os.path.dirname(os.path.join(os.getcwd(), __file__))
+        last_eventid_filepath = os.path.join(script_dirpath, 'veloEvent.id')
+
+        # Open file containing the last event ID and get the last record read
+        lastEventId = 0;
+        highestId = 0
+
+        if os.path.isfile(last_eventid_filepath):
+            try:
+                lastEventId_File = open(last_eventid_filepath,'r')
+                lastEventId_Str = str(lastEventId_File.readline())
+                sys.stderr.write('Last Event ID from File: ' + lastEventId_Str + '\n')
+                lastEventId = int(lastEventId_Str.strip())
+                
+                lastEventId_File.close()
+
+            # Catch the exception. Real exception handler would be more robust    
+            except IOError:
+                sys.stderr.write('Error: failed to read last_eventid file, ' + last_eventid_filepath + '\n')
+                sys.exit(2)
+        else:
+            sys.stderr.write('Error: ' + last_eventid_filepath + ' file not found! Starting from zero. \n')
+
+        #djs Process the response from the rest call
+        if response_type == "json":
+            output = json.loads(raw_response_output)
+
+            #djs Sort output into ascending dictionary based on event id
+            output_s =  collections.OrderedDict()
+            for entry in output['data']:
+                thisId = entry['id']
+                output_s[thisId] = entry
+
+            #djs re-sort the list of events oldest first 
+            output_s_r = collections.OrderedDict(reversed(list(output_s.items())))
+            #djs for each event, write to database
+            for key_Str, value in output_s_r.items():
+                key = int(key_Str)
+                if key > highestId:
+                    highestId = key
+                if key > lastEventId:
+                    print_xml_stream(json.dumps(value))
+
+            #write the latest event back to file
+            if highestId > 0:
+                thisLastEventId = str(highestId)
+                sys.stderr.write('Last Event ID to File: ' + thisLastEventId + '\n')
+                try:
+                    lastEventId_File = open(last_eventid_filepath,'w')
+                    lastEventId_File.seek(0)
+                    lastEventId_File.write(thisLastEventId)
+                    lastEventId_File.close()
+                    
+                # Catch the exception. Real exception handler would be more robust    
+                except IOError:
+                    sys.stderr.write('Error writing last_eventid to file: ' + last_eventid_filepath + '\n')
+                    sys.exit(2)
+
+        else:
+            print_xml_stream(raw_response_output)
           
 #template
 class MyResponseHandler:
@@ -400,22 +481,6 @@ class JSONArrayHandler:
             output = json.loads(raw_response_output)
 
             for entry in output:
-                print_xml_stream(json.dumps(entry))
-        else:
-            print_xml_stream(raw_response_output)
-            
-class MyJSONArrayHandler:
-
-    def __init__(self,**args):
-        self.somekey = args['somekey']
-        pass
-
-    def __call__(self, response_object,raw_response_output,response_type,req_args,endpoint):
-        if response_type == "json":
-            output = json.loads(raw_response_output)
-
-            for entry in output['value']:
-                entry['somekey'] = self.somekey
                 print_xml_stream(json.dumps(entry))
         else:
             print_xml_stream(raw_response_output)

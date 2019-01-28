@@ -1,5 +1,6 @@
 import sys,logging,os,time,re,threading,hashlib
 import xml.dom.minidom
+import requests,json
 import tokens
 from datetime import datetime
 
@@ -77,7 +78,7 @@ SCHEME = """<scheme>
             </arg>
             <arg name="auth_type">
                 <title>Authentication Type</title>
-                <description>Authentication method to use : none | basic | digest | oauth1 | oauth2 | custom</description>
+                <description>Authentication method to use : none | basic | digest | oauth1 | oauth2 | custom | cookie</description>
                 <required_on_edit>false</required_on_edit>
                 <required_on_create>true</required_on_create>
             </arg>
@@ -323,6 +324,15 @@ def do_run(config,endpoint_list):
     global STANZA
     global SESSION_TOKEN 
     global delimiter
+
+    # djs
+    global APP_COUNT_1 
+    global APP_COUNT_2
+    global APP_COUNT_3 
+    global APP_COUNT_4
+
+    APP_COUNT_1 = 0
+
     SPLUNK_PORT = server_uri[18:]
     STANZA = config.get("name")
     SESSION_TOKEN = config.get("session_key")
@@ -334,7 +344,7 @@ def do_run(config,endpoint_list):
     http_method=config.get("http_method","GET")
     request_payload=config.get("request_payload")
     
-    #none | basic | digest | oauth1 | oauth2
+    #none | basic | digest | oauth1 | oauth2 | cookie
     auth_type=config.get("auth_type","none")
     
     #Delimiter to use for any multi "key=value" field inputs
@@ -394,7 +404,7 @@ def do_run(config,endpoint_list):
     if not https_proxy is None:
         proxies["https"] = https_proxy 
         
-    cookies={} 
+    cookies={}
     cookies_str=config.get("cookies")
     if not cookies_str is None:
         cookies = dict((k.strip(), v.strip()) for k,v in 
@@ -447,8 +457,7 @@ def do_run(config,endpoint_list):
         if not custom_auth_handler_args_str is None:
             custom_auth_handler_args = dict((k.strip(), v.strip()) for k,v in (item.split('=',1) for item in custom_auth_handler_args_str.split(delimiter)))
         CUSTOM_AUTH_HANDLER_INSTANCE = class_(**custom_auth_handler_args)
-    
-    
+
     try: 
         auth=None
         oauth2=None
@@ -469,11 +478,18 @@ def do_run(config,endpoint_list):
             oauth2 = OAuth2Session(client, token=token,auto_refresh_url=oauth2_refresh_url,auto_refresh_kwargs=oauth2_refresh_props,token_updater=oauth2_token_updater)
         elif auth_type == "custom" and CUSTOM_AUTH_HANDLER_INSTANCE:
             auth = CUSTOM_AUTH_HANDLER_INSTANCE
-   
+        # djs Added cookie as an auth type
+        elif auth_type == "cookie" and CUSTOM_AUTH_HANDLER_INSTANCE:
+            auth = CUSTOM_AUTH_HANDLER_INSTANCE
+
         req_args = {"verify" : False ,"stream" : bool(streaming_request) , "timeout" : float(request_timeout)}
 
         if auth:
-            req_args["auth"]= auth
+            # djs Special processing if cookie auth type
+            if auth_type == "cookie":
+                logging.error("Skipping auth paths for cookies")
+            else:
+                req_args["auth"]= auth
         if url_args:
             req_args["params"]= url_args
         if cookies:
@@ -483,8 +499,9 @@ def do_run(config,endpoint_list):
         if proxies:
             req_args["proxies"]= proxies
         if request_payload and not http_method == "GET":
-            req_args["data"]= request_payload
-                          
+            req_args["data"]= request_payload   
+
+ 
                     
         while True:
              
@@ -526,12 +543,26 @@ def do_run(config,endpoint_list):
                         if http_method == "GET":
                             r = requests.get(endpoint,**req_args)
                         elif http_method == "POST":
-                            r = requests.post(endpoint,**req_args) 
+                            if auth_type == "cookie":
+                                # djs Doing my own custom login so I can pass cookies.
+                                #     Need to change to select Custom Call.
+                                djsU = custom_auth_handler_args['username']
+                                djsP = custom_auth_handler_args['password']
+                                djsUrl = custom_auth_handler_args['url']
+                                djsPayload = {'username': djsU,'password': djsP }
+                                djsLogin_response = requests.post(djsUrl, data=djsPayload)
+                                djsCookies = djsLogin_response.cookies
+                                if djsCookies:
+                                    r = requests.post(endpoint,cookies=djsCookies,**req_args)
+                                else:
+                                    logging.error("Auth Type Cookie but no cookie to pass.")
+                            else:
+                                # djs Standard Call so situation normal
+                                r = requests.post(endpoint,**req_args)
                         elif http_method == "PUT":
                             r = requests.put(endpoint,**req_args) 
                         elif http_method == "HEAD":
                             r = requests.head(endpoint,**req_args)
-                        
                 except requests.exceptions.Timeout,e:
                     logging.error("HTTP Request Timeout error: %s" % str(e))
                     time.sleep(float(backoff_time))
@@ -558,8 +589,7 @@ def do_run(config,endpoint_list):
                         sys.stdout.flush()
                     logging.error("HTTP Request error: %s" % str(e))
                     time.sleep(float(backoff_time))
-                    continue
-            
+                    continue            
             
                 if "data" in req_args:   
                     checkParamUpdated(req_args_data_current,req_args["data"],"request_payload")
